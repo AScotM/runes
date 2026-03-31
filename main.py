@@ -71,6 +71,8 @@ class RuneField:
         rune_decay: float,
         symmetry: float,
         ornament_bias: float,
+        repeat: bool = False,
+        repeat_cycles: int = 0,
     ) -> None:
         self.width = width
         self.height = height
@@ -84,10 +86,36 @@ class RuneField:
         self.rune_decay = rune_decay
         self.symmetry = max(0.0, min(1.0, symmetry))
         self.ornament_bias = max(0.0, min(1.0, ornament_bias))
+        self.repeat = repeat
+        self.repeat_cycles = repeat_cycles
         self.rng = random.Random(seed)
         self.grid: List[List[Cell]] = [[Cell() for _ in range(width)] for _ in range(height)]
         self.frame = 0
+        self.cycle = 0
         self.seed_field()
+        self.save_initial_state()
+
+    def save_initial_state(self) -> None:
+        self.initial_energy = [[cell.energy for cell in row] for row in self.grid]
+        self.initial_memory = [[cell.memory for cell in row] for row in self.grid]
+        self.initial_flow_x = [[cell.flow_x for cell in row] for row in self.grid]
+        self.initial_flow_y = [[cell.flow_y for cell in row] for row in self.grid]
+        self.initial_phase = [[cell.phase for cell in row] for row in self.grid]
+        self.initial_rune = [[cell.rune for cell in row] for row in self.grid]
+        self.initial_age = [[cell.age for cell in row] for row in self.grid]
+
+    def reset_to_initial(self) -> None:
+        for y in range(self.height):
+            for x in range(self.width):
+                self.grid[y][x].energy = self.initial_energy[y][x]
+                self.grid[y][x].memory = self.initial_memory[y][x]
+                self.grid[y][x].flow_x = self.initial_flow_x[y][x]
+                self.grid[y][x].flow_y = self.initial_flow_y[y][x]
+                self.grid[y][x].phase = self.initial_phase[y][x]
+                self.grid[y][x].rune = self.initial_rune[y][x]
+                self.grid[y][x].age = self.initial_age[y][x]
+        self.frame = 0
+        self.cycle += 1
 
     def mirrored_points(self, x: int, y: int) -> List[Tuple[int, int]]:
         pts = {
@@ -261,6 +289,10 @@ class RuneField:
         self.inject_spores()
         self.frame += 1
 
+        if self.repeat and (self.repeat_cycles == 0 or self.cycle < self.repeat_cycles - 1):
+            if self.frame >= 500:
+                self.reset_to_initial()
+
     def inject_spores(self) -> None:
         count = max(1, (self.width * self.height) // 420)
         cx = (self.width - 1) / 2.0
@@ -342,8 +374,9 @@ class RuneField:
         mean_energy = sum(energies) / len(energies) if energies else 0.0
         mean_memory = sum(memories) / len(memories) if memories else 0.0
 
+        cycle_info = f"cycle={self.cycle+1} " if self.repeat else ""
         return (
-            f"frame={self.frame} "
+            f"{cycle_info}frame={self.frame} "
             f"runes={rune_count} "
             f"unique={len(unique)} "
             f"energy={mean_energy:.3f} "
@@ -377,6 +410,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--symmetry", type=float, default=0.90)
     parser.add_argument("--ornament-bias", type=float, default=0.55)
     parser.add_argument("--stats", action="store_true")
+    parser.add_argument("--repeat", action="store_true", help="Repeat the entire sequence in a loop")
+    parser.add_argument("--repeat-cycles", type=int, default=0, help="Number of cycles to repeat (0 = infinite)")
     return parser.parse_args()
 
 
@@ -402,6 +437,8 @@ def main() -> int:
         rune_decay=args.rune_decay,
         symmetry=args.symmetry,
         ornament_bias=args.ornament_bias,
+        repeat=args.repeat,
+        repeat_cycles=args.repeat_cycles,
     )
 
     frame_limit = args.frames if args.frames > 0 else None
